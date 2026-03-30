@@ -1,11 +1,15 @@
 {
-	"name": "cofhe-hardhat-starter",
-	"version": "0.3.1",
-	"description": "Starter repository for Fhenix CoFHE contract development",
+	"name": "shadowcredit",
+	"version": "1.0.0",
+	"description": "Encrypted on-chain credit scoring and undercollateralized lending protocol on Fhenix CoFHE",
 	"scripts": {
 		"test": "REPORT_GAS=true hardhat test",
 		"clean": "rimraf ./artifacts ./cache ./coverage ./types ./coverage.json ./deployments/localcofhe",
 		"compile": "hardhat compile",
+		"deploy:local": "hardhat deploy-shadowcredit --network hardhat",
+		"deploy:testnet": "hardhat deploy-shadowcredit --network arb-sepolia",
+		"frontend:dev": "cd frontend && pnpm dev",
+		"frontend:build": "cd frontend && pnpm build",
 		"--------------": "",
 		" --- cofhe ---": "",
 		"  --------------": "",
