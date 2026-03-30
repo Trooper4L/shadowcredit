@@ -1,170 +1,270 @@
-# Fhenix CoFHE Hardhat Starter
+# ShadowCredit
 
-This project is a starter repository for developing FHE (Fully Homomorphic Encryption) smart contracts on the Fhenix network using CoFHE (Confidential Computing Framework for Homomorphic Encryption).
+Encrypted on-chain credit scoring and undercollateralized lending protocol built on [Fhenix CoFHE](https://docs.fhenix.zone/) (Fully Homomorphic Encryption). Credit scores are computed entirely on encrypted data — no plaintext scores ever exist on-chain.
 
-## Prerequisites
+**Live on Arbitrum Sepolia** | Solidity 0.8.25 | Next.js 14 | cofhejs | wagmi
 
-- Node.js (v18 or later)
-- pnpm (recommended package manager)
+---
 
-## Installation
+## How It Works
 
-1. Clone the repository:
+1. **Encrypt** — Borrower encrypts financial data (payment history, utilization, volume, repayments) client-side using `cofhejs` before submitting to the blockchain
+2. **Score** — `ShadowScorer` computes a credit score using FHE arithmetic on encrypted values. The score never exists in plaintext on-chain
+3. **Qualify** — `ShadowLender` checks if the encrypted score meets a threshold, receiving only a boolean (pass/fail) — never the actual score
+4. **Prove** — `ScoreProver` lets auditors verify if a score falls within a range via encrypted range proofs, returning only true/false
 
-```bash
-git clone https://github.com/fhenixprotocol/cofhe-hardhat-starter.git
-cd cofhe-hardhat-starter
+---
+
+## Architecture
+
+```
+┌──────────────┐     cofhejs encrypt     ┌────────────────┐
+│   Browser    │ ──────────────────────→  │  ShadowScorer  │
+│   (Next.js)  │                         │  FHE scoring   │
+└──────────────┘                         └───────┬────────┘
+                                                 │ qualifies() → ebool
+                                                 ▼
+                                         ┌────────────────┐
+                                         │  ShadowLender  │
+                                         │  Lending pool  │
+                                         └────────────────┘
+                                                 │
+                                                 ▼
+                                         ┌────────────────┐
+                                         │  ScoreProver   │
+                                         │  Range proofs  │
+                                         └────────────────┘
 ```
 
-2. Install dependencies:
+---
+
+## Smart Contracts
+
+### ShadowScorer
+
+Core FHE credit scoring engine. Stores all financial data as encrypted types (`euint32`, `euint64`) and computes scores using FHE arithmetic.
+
+**Scoring formula** (all operations on encrypted values):
+```
+score = 300
+      + (paymentHistory × 35)
+      + ((100 − utilization) × 30)
+      + (volume ÷ 10000)
+      + (repaymentCount × 20)
+```
+
+Score range: ~300 (worst) to ~850+ (best).
+
+**Key functions:**
+- `submitProfile()` — Accept encrypted financial inputs
+- `computeScore()` — Run FHE arithmetic to produce encrypted score
+- `qualifies()` — Returns `ebool`: does score >= encrypted threshold?
+- `isScoreInRange()` — Returns `ebool`: is score within [low, high]?
+- `requestDecryptScore()` / `getDecryptedScore()` — Async decryption via CoFHE (user can only decrypt their own score)
+
+### ShadowLender
+
+Undercollateralized lending pool. Borrowers can request loans up to 150% of their collateral value if their encrypted credit score qualifies.
+
+**Key functions:**
+- `deposit()` / `withdrawLiquidity()` — Lender liquidity management
+- `requestLoan()` — Borrower submits loan request with encrypted threshold
+- `settleLoan()` — Owner settles after CoFHE resolves the qualification check
+- `repayLoan()` — Borrower repays and reclaims collateral
+
+### ScoreProver
+
+Selective disclosure for compliance. Auditors can verify score ranges without learning the actual score.
+
+**Key functions:**
+- `registerAuditor()` — Owner whitelists auditor addresses
+- `grantConsent()` / `revokeConsent()` — Users control who can query their score
+- `requestRangeProof()` — Auditor asks "is score in [low, high]?" and receives only `ebool`
+
+### MockUSDC
+
+ERC20 test token with 6 decimals and a public `mint()` faucet.
+
+---
+
+## FHE Operations Used
+
+| Operation | Solidity | Purpose |
+|-----------|----------|---------|
+| Addition | `FHE.add()` | Score component accumulation |
+| Subtraction | `FHE.sub()` | Utilization inversion (100 − util) |
+| Multiplication | `FHE.mul()` | Weight application |
+| Division | `FHE.div()` | Volume scaling |
+| Comparison | `FHE.gte()`, `FHE.lte()` | Qualification and range checks |
+| Logic | `FHE.and()` | Combining range bounds |
+| Permissions | `FHE.allowThis()`, `FHE.allow()` | Access control on encrypted values |
+| Decryption | `FHE.decrypt()`, `FHE.getDecryptResultSafe()` | Async score reveal to user |
+
+---
+
+## Frontend
+
+Built with Next.js 14 (App Router), Tailwind CSS, wagmi, and viem. Design system: **Obsidian Ledger** — dark theme (#131314), Cyber Lime (#CCFF00) accents, glassmorphism, sharp 2px corners.
+
+### Pages
+
+| Route | Description |
+|-------|-------------|
+| `/` | Dashboard — portfolio stats, recent activity, protocol info |
+| `/borrow` | Submit encrypted profile, compute score, request loans |
+| `/lend` | Deposit/withdraw USDC, view pool statistics |
+| `/auditor` | Grant/revoke consent, request encrypted range proofs |
+
+### Hooks
+
+- **`useShadowScorer`** — `submitProfile()`, `computeScore()`, `requestDecrypt()` with polling
+- **`useShadowLender`** — `deposit()` (approve + deposit flow), `requestLoan()`, `repayLoan()`, `getPoolStats()`
+- **`useScoreProver`** — `grantConsent()`, `revokeConsent()`, `requestRangeProof()`
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js v18+
+- pnpm
+- MetaMask (configured for Arbitrum Sepolia)
+- Arbitrum Sepolia ETH for gas ([bridge from Sepolia](https://bridge.arbitrum.io/))
+
+### Install
 
 ```bash
+git clone https://github.com/Trooper4L/shadowcredit.git
+cd shadowcredit
 pnpm install
 ```
 
-## Available Scripts
+### Configure
 
-### Development
+```bash
+cp .env.example .env
+```
 
-- `pnpm compile` - Compile the smart contracts
-- `pnpm clean` - Clean the project artifacts
-- `pnpm test` - Run tests on the local CoFHE network
-- `pnpm test:hardhat` - Run tests on the Hardhat network
-- `pnpm test:localcofhe` - Run tests on the local CoFHE network
+Edit `.env` with your private key and RPC URL:
 
-### Local CoFHE Network
+```
+PRIVATE_KEY=your_private_key_here
+ARB_SEPOLIA_RPC=https://sepolia-rollup.arbitrum.io/rpc
+```
 
-- `pnpm localcofhe:start` - Start a local CoFHE network
-- `pnpm localcofhe:stop` - Stop the local CoFHE network
-- `pnpm localcofhe:faucet` - Get test tokens from the faucet
-- `pnpm localcofhe:deploy` - Deploy contracts to the local CoFHE network
+### Compile Contracts
 
-### Contract Tasks
+```bash
+pnpm compile
+```
 
-- `pnpm task:deploy` - Deploy contracts
-- `pnpm task:addCount` - Add to the counter
-- `pnpm task:getCount` - Get the current count
-- `pnpm task:getFunds` - Get funds from the contract
+### Run Tests
+
+```bash
+pnpm test
+```
+
+Tests run against the Hardhat network with CoFHE mocks. Covers:
+- Profile submission and encrypted score computation
+- Qualification pass/fail scenarios
+- Deposit, loan request, settlement, and repayment flows
+- Auditor consent and range proof verification
+
+### Deploy to Arbitrum Sepolia
+
+```bash
+pnpm deploy:testnet
+```
+
+This deploys all 4 contracts, authorizes ShadowLender in ShadowScorer, seeds the pool with 10,000 mUSDC, and writes addresses to `deployments.json`.
+
+### Run Frontend
+
+```bash
+cd frontend
+cp .env.local.example .env.local  # or create with deployed addresses
+pnpm install
+pnpm dev
+```
+
+Set these in `frontend/.env.local`:
+
+```
+NEXT_PUBLIC_SHADOW_SCORER_ADDRESS=0x...
+NEXT_PUBLIC_SHADOW_LENDER_ADDRESS=0x...
+NEXT_PUBLIC_SCORE_PROVER_ADDRESS=0x...
+NEXT_PUBLIC_MOCK_USDC_ADDRESS=0x...
+```
+
+Open [http://localhost:3000](http://localhost:3000) and connect MetaMask on Arbitrum Sepolia.
+
+---
+
+## CLI Tasks
+
+| Command | Description |
+|---------|-------------|
+| `npx hardhat deploy-shadowcredit --network arb-sepolia` | Deploy all contracts |
+| `npx hardhat submit-profile --network arb-sepolia` | Submit encrypted credit profile |
+| `npx hardhat decrypt-score --network arb-sepolia` | Decrypt your credit score |
+
+---
+
+## Deployed Contracts (Arbitrum Sepolia)
+
+| Contract | Address |
+|----------|---------|
+| MockUSDC | `0x7F2cf8FeABC1Cc7f2eA42371Bd912D587107E69d` |
+| ShadowScorer | `0x22Ccc0840cD7d96D380E06bdd7fF8AF123E1e167` |
+| ShadowLender | `0x5Ac1Ee1129B93FFfC0d2C87F7e77032988234148` |
+| ScoreProver | `0xbaC5330762e788D06fb4711aabe704B9E6fCf792` |
+
+---
 
 ## Project Structure
 
-- `contracts/` - Smart contract source files
-  - `Counter.sol` - Example FHE counter contract
-  - `Lock.sol` - Example time-locked contract
-- `test/` - Test files
-- `ignition/` - Hardhat Ignition deployment modules
-
-## `cofhejs` and `cofhe-hardhat-plugin`
-
-This project uses cofhejs and the CoFHE Hardhat plugin to interact with FHE (Fully Homomorphic Encryption) smart contracts. Here are the key features and utilities:
-
-### cofhejs Features
-
-- **Encryption/Decryption**: Encrypt and decrypt values using FHE
-
-  ```typescript
-  import { cofhejs, Encryptable, FheTypes } from 'cofhejs/node'
-
-  // Encrypt a value
-  const [encryptedInput] = await cofhejs.encrypt(
-  	(step) => {
-  		console.log(`Encrypt step - ${step}`)
-  	},
-  	[Encryptable.uint32(5n)]
-  )
-
-  // Decrypt a value
-  const decryptedResult = await cofhejs.decrypt(encryptedValue, FheTypes.Uint32)
-  ```
-
-- **Unsealing**: Unseal encrypted values from the blockchain
-  ```typescript
-  const unsealedResult = await cofhejs.unseal(encryptedValue, FheTypes.Uint32)
-  ```
-
-### `cofhe-hardhat-plugin` Features
-
-- **Network Configuration**: Automatically configures the cofhe enabled networks
-- **Wallet Funding**: Automatically funds wallets on the local network
-
-  ```typescript
-  import { localcofheFundWalletIfNeeded } from 'cofhe-hardhat-plugin'
-  await localcofheFundWalletIfNeeded(hre, walletAddress)
-  ```
-
-- **Signer Initialization**: Initialize cofhejs with a Hardhat signer
-
-  ```typescript
-  import { cofhejs_initializeWithHardhatSigner } from 'cofhe-hardhat-plugin'
-  await cofhejs_initializeWithHardhatSigner(signer)
-  ```
-
-- **Testing Utilities**: Helper functions for testing FHE contracts
-  ```typescript
-  import { expectResultSuccess, expectResultValue, mock_expectPlaintext, isPermittedCofheEnvironment } from 'cofhe-hardhat-plugin'
-  ```
-
-### Environment Configuration
-
-The plugin supports different environments:
-
-- `MOCK`: For testing with mocked FHE operations
-- `LOCAL`: For testing with a local CoFHE network (whitelist only)
-- `TESTNET`: For testing and tasks using `arb-sepolia` and `eth-sepolia`
-
-You can check the current environment using:
-
-```typescript
-if (!isPermittedCofheEnvironment(hre, 'MOCK')) {
-	// Skip test or handle accordingly
-}
+```
+shadowcredit/
+├── contracts/
+│   ├── MockUSDC.sol          # Test USDC token (6 decimals, public mint)
+│   ├── ShadowScorer.sol      # FHE credit scoring engine
+│   ├── ShadowLender.sol      # Undercollateralized lending pool
+│   └── ScoreProver.sol       # Auditor selective disclosure
+├── tasks/
+│   ├── deploy-all.ts         # Full deployment + setup
+│   ├── submit-profile.ts     # CLI profile submission
+│   ├── decrypt-score.ts      # CLI score decryption
+│   └── index.ts
+├── test/
+│   ├── ShadowScorer.test.ts  # Scoring + qualification tests
+│   ├── ShadowLender.test.ts  # Lending flow tests
+│   └── ScoreProver.test.ts   # Range proof + consent tests
+├── frontend/
+│   ├── app/                  # Next.js pages (dashboard, borrow, lend, auditor)
+│   ├── components/           # UI components (TopNav, Sidebar, SubmitData, etc.)
+│   ├── hooks/                # Contract interaction hooks
+│   └── lib/                  # wagmi config, contract ABIs + addresses
+├── hardhat.config.ts
+├── deployments.json          # Deployed contract addresses
+└── package.json
 ```
 
-## Links and Additional Resources
+---
 
-### `cofhejs`
+## Tech Stack
 
-[`cofhejs`](https://github.com/FhenixProtocol/cofhejs) is the JavaScript/TypeScript library for interacting with FHE smart contracts. It provides functions for encryption, decryption, and unsealing FHE values.
+| Layer | Technology |
+|-------|-----------|
+| FHE | Fhenix CoFHE (cofhe-contracts v0.0.13, cofhejs v0.3.1) |
+| Contracts | Solidity 0.8.25, Hardhat, OpenZeppelin |
+| Network | Arbitrum Sepolia (Chain ID: 421614) |
+| Frontend | Next.js 14, TypeScript, Tailwind CSS |
+| Web3 | wagmi, viem |
+| Testing | Hardhat + Chai + cofhe-hardhat-plugin (FHE mocks) |
 
-#### Key Features
-
-- Encryption of data before sending to FHE contracts
-- Unsealing encrypted values from contracts
-- Managing permits for secure contract interactions
-- Integration with Web3 libraries (ethers.js and viem)
-
-### `cofhe-mock-contracts`
-
-[`cofhe-mock-contracts`](https://github.com/FhenixProtocol/cofhe-mock-contracts) provides mock implementations of CoFHE contracts for testing FHE functionality without the actual coprocessor.
-
-#### Features
-
-- Mock implementations of core CoFHE contracts:
-  - MockTaskManager
-  - MockQueryDecrypter
-  - MockZkVerifier
-  - ACL (Access Control List)
-- Synchronous operation simulation with mock delays
-- On-chain access to unencrypted values for testing
-
-#### Integration with Hardhat and cofhejs
-
-Both `cofhejs` and `cofhe-hardhat-plugin` interact directly with the mock contracts:
-
-- When imported in `hardhat.config.ts`, `cofhe-hardhat-plugin` injects necessary mock contracts into the Hardhat testnet
-- `cofhejs` automatically detects mock contracts and adjusts behavior for test environments
-
-#### Mock Behavior Differences
-
-- **Symbolic Execution**: In mocks, ciphertext hashes point to plaintext values stored on-chain
-- **On-chain Decryption**: Mock decryption adds simulated delays to mimic real behavior
-- **ZK Verification**: Mock verifier handles on-chain storage of encrypted inputs
-- **Off-chain Decryption**: When using `cofhejs.unseal()`, mocks return plaintext values directly from on-chain storage
+---
 
 ## License
 
 MIT
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
