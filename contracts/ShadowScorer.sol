@@ -254,41 +254,50 @@ contract ShadowScorer {
         return inRange;
     }
 
-    // ─── DECRYPTION (User-readable) ─────────────────────────────────────
+    // ─── DECRYPTION (publish-result pattern — @cofhe/sdk) ────────────────
+    //
+    // The old FHE.decrypt() + getDecryptResultSafe() flow is deprecated as of 2026-04-13.
+    // The new flow:
+    //   1. Off-chain UI:    client.decryptForView(ctHash, FheTypes.Uint64).execute()
+    //                       — no gas, no tx, permit-gated. Nothing to do here.
+    //   2. On-chain reveal: client.decryptForTx(ctHash).execute()
+    //                       → { decryptedValue, signature }
+    //                       → call publishDecryptResult() below to verify + store.
+
+    event ScorePublished(address indexed user, uint64 score, uint256 timestamp);
+
+    /// @notice Last on-chain-revealed score per user (optional analytics surface).
+    mapping(address => uint64) public revealedScore;
+
+    /// @notice Block timestamp at which the score was last published on-chain.
+    mapping(address => uint256) public revealedAt;
+
+    error HandleMismatch();
 
     /**
-     * @notice Request async decryption of user's own credit score.
-     * The CoFHE coprocessor will resolve the decryption asynchronously.
-     * Call getDecryptedScore() after the coprocessor resolves.
+     * @notice Publish a signed threshold-decryption result for the caller's credit score.
+     * The CoFHE threshold network signs (ctHash, plaintext); the signature is verified
+     * on-chain by FHE.publishDecryptResult so nobody can forge a reveal.
+     *
+     * @param plaintext   The decrypted uint64 score returned by decryptForTx.
+     * @param signature   Threshold signature returned by decryptForTx.
      */
-    function requestDecryptScore() external {
+    function publishScore(uint64 plaintext, bytes calldata signature) external {
         if (!hasScore[msg.sender]) revert ProfileNotFound();
-        FHE.decrypt(_creditScores[msg.sender]);
+        FHE.publishDecryptResult(_creditScores[msg.sender], plaintext, signature);
+        revealedScore[msg.sender] = plaintext;
+        revealedAt[msg.sender] = block.timestamp;
+        emit ScorePublished(msg.sender, plaintext, block.timestamp);
     }
 
     /**
-     * @notice Get the decrypted score after CoFHE has resolved.
-     * Returns (score, isReady) — isReady is false if decryption is still pending.
+     * @notice Return the raw ctHash for the caller's credit score so the client can
+     * pass it to decryptForView/decryptForTx. Encrypted values are handles — safe to
+     * return; only the permit-bearer can decrypt them.
      */
-    function getDecryptedScore() external view returns (uint64 score, bool isReady) {
+    function getScoreHandle() external view returns (uint256) {
         if (!hasScore[msg.sender]) revert ProfileNotFound();
-        return FHE.getDecryptResultSafe(_creditScores[msg.sender]);
-    }
-
-    /**
-     * @notice Request async decryption of user's payment history.
-     */
-    function requestDecryptPaymentHistory() external {
-        if (!hasProfile[msg.sender]) revert ProfileNotFound();
-        FHE.decrypt(_paymentHistory[msg.sender]);
-    }
-
-    /**
-     * @notice Get decrypted payment history after CoFHE resolves.
-     */
-    function getDecryptedPaymentHistory() external view returns (uint32 value, bool isReady) {
-        if (!hasProfile[msg.sender]) revert ProfileNotFound();
-        return FHE.getDecryptResultSafe(_paymentHistory[msg.sender]);
+        return uint256(euint64.unwrap(_creditScores[msg.sender]));
     }
 
     /**

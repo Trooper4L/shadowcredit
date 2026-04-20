@@ -5,6 +5,7 @@ import "@fhenixprotocol/cofhe-contracts/FHE.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./ShadowScorer.sol";
+import "./CreditPassport.sol";
 
 /**
  * @title ShadowLender
@@ -29,6 +30,9 @@ contract ShadowLender {
 
     ShadowScorer public immutable scorer;
     IERC20 public immutable usdc;
+
+    /// @notice Optional passport registry — set once for the cross-protocol demo.
+    CreditPassport public passport;
 
     address public owner;
 
@@ -236,6 +240,53 @@ contract ShadowLender {
 
     function setMinimumScore(uint256 newThreshold) external onlyOwner {
         minimumScoreThreshold = newThreshold;
+    }
+
+    function setPassport(address _passport) external onlyOwner {
+        passport = CreditPassport(_passport);
+    }
+
+    // ─── PASSPORT-MEDIATED BORROWING ──────────────────────────────────────
+
+    /**
+     * @notice Request a loan by presenting a Vidix credit passport rather than
+     * being directly registered with ShadowScorer. The passport hands this
+     * contract a transient handle on the holder's encrypted score — we compare
+     * it against the lender-provided encrypted threshold without ever touching
+     * plaintext.
+     *
+     * This is the cross-protocol integration surface: any lender/insurer/etc.
+     * can plug into Vidix by holding a passport reference.
+     */
+    function requestLoanViaPassport(
+        uint256 tokenId,
+        uint256 loanAmount,
+        InEuint64 calldata thresholdIn
+    ) external payable returns (uint256 requestId) {
+        if (address(passport) == address(0)) revert("Passport not set");
+        if (hasActiveLoan[msg.sender]) revert AlreadyHasLoan();
+        if (totalLiquidity < loanAmount) revert InsufficientLiquidity();
+        if (passport.ownerOf(tokenId) != msg.sender) revert("Not passport holder");
+
+        uint256 collateral = msg.value;
+
+        // Pull the holder's encrypted score handle into this tx.
+        euint64 scoreHandle = passport.readEncryptedScore(tokenId, address(this));
+        euint64 threshold = FHE.asEuint64(thresholdIn);
+        ebool qualified = FHE.gte(scoreHandle, threshold);
+        FHE.allowThis(qualified);
+
+        requestId = nextRequestId++;
+        loanRequests[requestId] = LoanRequest({
+            borrower: msg.sender,
+            amount: loanAmount,
+            collateral: collateral,
+            requestTime: block.timestamp,
+            settled: false,
+            approved: false
+        });
+
+        emit LoanRequested(requestId, msg.sender, loanAmount);
     }
 
     function withdrawLiquidity(uint256 amount) external {

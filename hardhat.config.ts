@@ -14,6 +14,8 @@ const config: HardhatUserConfig = {
   solidity: {
     version: "0.8.25",
     settings: {
+      // cofhe-contracts 0.1.3 uses Cancun opcodes (tstore/tload) in internal ACL helpers.
+      evmVersion: "cancun",
       optimizer: {
         enabled: true,
         runs: 200,
