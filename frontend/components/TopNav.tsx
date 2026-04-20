@@ -1,8 +1,24 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
+import { Logo } from "@/app/Logo";
+
+const NAV = [
+  { href: "/",         label: "Front Office" },
+  { href: "/borrow",   label: "Intake" },
+  { href: "/passport", label: "Your Dossier" },
+  { href: "/lend",     label: "The Counting-House" },
+  { href: "/auditor",  label: "The Inspector" },
+];
+
+function truncateAddress(addr: string) {
+  return `${addr.slice(0, 6)}\u2026${addr.slice(-4)}`;
+}
 
 export default function TopNav() {
+  const pathname = usePathname();
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
@@ -12,50 +28,70 @@ export default function TopNav() {
     if (injected) connect({ connector: injected });
   };
 
-  const truncateAddress = (addr: string) =>
-    `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-
   return (
-    <header className="fixed top-0 right-0 left-64 h-16 flex items-center justify-between px-8 z-40 bg-[#131314]/60 backdrop-blur-xl border-b border-[#353436]/30">
-      <div className="flex items-center gap-2">
-        <span
-          className="material-symbols-outlined text-secondary"
-          style={{ fontVariationSettings: "'FILL' 1" }}
-        >
-          shield
-        </span>
-        <span className="font-headline text-sm uppercase tracking-widest text-[#c4c9ac]">
-          Secured Terminal
-        </span>
-      </div>
-      <div className="flex items-center gap-6">
-        <div className="flex gap-4">
-          <span className="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary-fixed transition-colors">
-            notifications
-          </span>
-          <span className="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary-fixed transition-colors">
-            shield
-          </span>
+    <div className="envelope-nav">
+      <div className="max-w-col mx-auto px-8 py-3 flex items-center justify-between gap-4 relative z-10">
+        <div className="flex items-center gap-6">
+          <Link href="/" className="no-underline">
+            <Logo />
+          </Link>
+          <div
+            className="hidden md:flex items-center gap-2 typewriter text-[10px] tracking-[0.2em]"
+            style={{ color: "var(--ink-soft)" }}
+          >
+            <span className="live-dot" />
+            <span>BUREAU OPEN &nbsp;·&nbsp; ARB-SEPOLIA</span>
+          </div>
         </div>
-        <button className="px-4 py-1.5 border border-outline-variant text-[10px] uppercase tracking-widest hover:border-secondary transition-colors text-secondary">
-          Arbitrum Sepolia
-        </button>
-        {isConnected ? (
-          <button
-            onClick={() => disconnect()}
-            className="px-6 py-1.5 bg-primary-fixed text-on-primary-fixed font-headline font-bold text-xs uppercase tracking-widest rounded-sm hover:opacity-90 active:opacity-70 transition-all"
+
+        <nav className="hidden md:flex items-center gap-8">
+          {NAV.map((n) => {
+            const active =
+              n.href === "/"
+                ? pathname === "/"
+                : pathname.startsWith(n.href);
+            return (
+              <Link
+                key={n.href}
+                href={n.href}
+                className={`nav-link no-underline ${active ? "active" : ""}`}
+              >
+                {n.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="flex items-center gap-3">
+          <span
+            className="typewriter text-[10px] tracking-[0.15em] hidden md:inline"
+            style={{ color: "var(--ink-soft)" }}
           >
-            {truncateAddress(address!)}
-          </button>
-        ) : (
-          <button
-            onClick={handleConnect}
-            className="px-6 py-1.5 bg-primary-fixed text-on-primary-fixed font-headline font-bold text-xs uppercase tracking-widest rounded-sm hover:opacity-90 active:opacity-70 transition-all"
+            BLOCK
+          </span>
+          <span
+            className="courier text-xs"
+            style={{ color: "var(--oxblood)" }}
           >
-            Connect Wallet
-          </button>
-        )}
+            8,247,193
+          </span>
+          {isConnected ? (
+            <button
+              onClick={() => disconnect()}
+              className="btn-wax text-[11px] py-2 px-4"
+            >
+              {truncateAddress(address!)}
+            </button>
+          ) : (
+            <button
+              onClick={handleConnect}
+              className="btn-wax text-[11px] py-2 px-4"
+            >
+              Present Credentials
+            </button>
+          )}
+        </div>
       </div>
-    </header>
+    </div>
   );
 }

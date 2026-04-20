@@ -1,10 +1,9 @@
 import { task } from "hardhat/config";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import {
-  cofhejs_initializeWithHardhatSigner,
-  expectResultSuccess
-} from "cofhe-hardhat-plugin";
-import { cofhejs, Encryptable } from "cofhejs/node";
+import { createCofheConfig, createCofheClient } from "@cofhe/sdk/node";
+import { HardhatSignerAdapter } from "@cofhe/sdk/adapters";
+import { chains } from "@cofhe/sdk/chains";
+import { Encryptable } from "@cofhe/sdk";
 
 task("submit-profile", "Submit encrypted credit data for the connected wallet")
   .addParam("payment", "Payment history score 0-100")
@@ -17,24 +16,26 @@ task("submit-profile", "Submit encrypted credit data for the connected wallet")
 
     console.log(`\nSubmitting encrypted profile for: ${user.address}`);
 
-    await cofhejs_initializeWithHardhatSigner(user);
+    const config = createCofheConfig({
+      supportedChains: [chains.arbSepolia, chains.hardhat, chains.localcofhe],
+    });
+    const client = createCofheClient(config);
+    const { publicClient, walletClient } = await HardhatSignerAdapter(user);
+    await client.connect(publicClient, walletClient);
 
     const deployments = JSON.parse(require("fs").readFileSync("./deployments.json"));
     const scorer = await ethers.getContractAt("ShadowScorer", deployments.ShadowScorer);
 
-    // Encrypt all inputs client-side BEFORE sending to contract
     console.log("Encrypting inputs...");
-    const [paymentEnc, utilizationEnc, volumeEnc, repaymentEnc] = expectResultSuccess(
-      await cofhejs.encrypt(
-        (step: string) => console.log(`  Encrypt step: ${step}`),
-        [
-          Encryptable.uint32(BigInt(args.payment)),
-          Encryptable.uint32(BigInt(args.utilization)),
-          Encryptable.uint64(BigInt(args.volume)),
-          Encryptable.uint32(BigInt(args.repayments)),
-        ]
-      )
-    );
+    const [paymentEnc, utilizationEnc, volumeEnc, repaymentEnc] = await client
+      .encryptInputs([
+        Encryptable.uint32(BigInt(args.payment)),
+        Encryptable.uint32(BigInt(args.utilization)),
+        Encryptable.uint64(BigInt(args.volume)),
+        Encryptable.uint32(BigInt(args.repayments)),
+      ])
+      .onStep((step) => console.log(`  Encrypt step: ${step}`))
+      .execute();
 
     console.log("Submitting to ShadowScorer...");
     const tx = await scorer.submitProfile(
@@ -46,10 +47,9 @@ task("submit-profile", "Submit encrypted credit data for the connected wallet")
     await tx.wait();
     console.log(`Profile submitted! TX: ${tx.hash}`);
 
-    // Trigger score computation
     console.log("Computing encrypted credit score...");
     const scoreTx = await scorer.computeScore(user.address);
     await scoreTx.wait();
     console.log(`Score computed! TX: ${scoreTx.hash}`);
-    console.log("\nScore is stored encrypted. Use 'decrypt-score' task to view your own score.\n");
+    console.log("\nScore stored encrypted. Use 'decrypt-score' to view your own score.\n");
   });

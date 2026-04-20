@@ -2,22 +2,21 @@
 
 import { useState } from "react";
 import { useAccount } from "wagmi";
-import { useShadowScorer } from "@/hooks/useShadowScorer";
+import {
+  useShadowScorer,
+  useDecryptScoreForDisplay,
+} from "@/hooks/useShadowScorer";
 
 export default function SubmitData() {
   const { isConnected } = useAccount();
-  const { submitProfile, computeScore, requestDecrypt, score, loading } =
-    useShadowScorer();
-  const [form, setForm] = useState({
-    paymentHistory: 85,
-    utilization: 22,
-    volume: 50000,
-    repayments: 12,
-  });
-  const [status, setStatus] = useState("");
-  const [step, setStep] = useState<
-    "idle" | "submitting" | "computing" | "decrypting" | "done"
-  >("idle");
+  const { submitProfile, computeScore, loading: writing } = useShadowScorer();
+  const { reveal, score, loading: revealing } = useDecryptScoreForDisplay();
+
+  const [paymentHistory, setPaymentHistory] = useState(85);
+  const [utilization, setUtilization] = useState(22);
+  const [volume, setVolume] = useState<number | "">(50_000);
+  const [repayments, setRepayments] = useState<number | "">(12);
+  const [status, setStatus] = useState<string>("");
 
   const handleSubmit = async () => {
     if (!isConnected) {
@@ -25,33 +24,25 @@ export default function SubmitData() {
       return;
     }
     try {
-      setStep("submitting");
-      setStatus("Encrypting data locally via cofhejs & submitting to ShadowScorer...");
+      setStatus("Encrypting locally and submitting to ShadowScorer\u2026");
       await submitProfile(
-        form.paymentHistory,
-        form.utilization,
-        form.volume,
-        form.repayments
+        paymentHistory,
+        utilization,
+        Number(volume) || 0,
+        Number(repayments) || 0,
       );
-
-      setStep("computing");
-      setStatus("Computing encrypted credit score on-chain via CoFHE...");
+      setStatus("Computing encrypted credit score on-chain\u2026");
       await computeScore();
-
-      setStep("decrypting");
-      setStatus("Requesting decryption from CoFHE coprocessor...");
-      const decrypted = await requestDecrypt();
-
-      setStep("done");
-      setStatus(
-        `Score decrypted: ${decrypted?.toString() ?? "N/A"}. Your encrypted profile is on-chain.`
-      );
+      setStatus("Decrypting off-chain (no gas, permit-gated)\u2026");
+      const plain = await reveal();
+      setStatus(`Score unsealed: ${plain.toString()}.`);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";
       setStatus(`Error: ${msg}`);
-      setStep("idle");
     }
   };
+
+  const loading = writing || revealing;
 
   return (
     <div className="bg-surface-container-low p-8 rounded-sm relative overflow-hidden">
@@ -68,7 +59,11 @@ export default function SubmitData() {
           Build Your Encrypted Profile
         </h3>
       </div>
-      <form className="space-y-10 relative z-10" onSubmit={(e) => e.preventDefault()}>
+
+      <form
+        className="space-y-10 relative z-10"
+        onSubmit={(e) => e.preventDefault()}
+      >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
           {/* Sliders */}
           <div className="space-y-8">
@@ -78,7 +73,7 @@ export default function SubmitData() {
                   Payment History (Score)
                 </label>
                 <span className="font-mono text-primary-fixed text-sm">
-                  {form.paymentHistory} / 100
+                  {paymentHistory} / 100
                 </span>
               </div>
               <input
@@ -86,13 +81,8 @@ export default function SubmitData() {
                 max={100}
                 min={0}
                 type="range"
-                value={form.paymentHistory}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    paymentHistory: +e.target.value,
-                  }))
-                }
+                value={paymentHistory}
+                onChange={(e) => setPaymentHistory(Number(e.target.value))}
               />
             </div>
             <div className="space-y-4">
@@ -101,7 +91,7 @@ export default function SubmitData() {
                   Utilization Rate (%)
                 </label>
                 <span className="font-mono text-primary-fixed text-sm">
-                  {form.utilization}%
+                  {utilization}%
                 </span>
               </div>
               <input
@@ -109,13 +99,12 @@ export default function SubmitData() {
                 max={100}
                 min={0}
                 type="range"
-                value={form.utilization}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, utilization: +e.target.value }))
-                }
+                value={utilization}
+                onChange={(e) => setUtilization(Number(e.target.value))}
               />
             </div>
           </div>
+
           {/* Numeric Inputs */}
           <div className="space-y-8">
             <div className="space-y-2">
@@ -127,9 +116,9 @@ export default function SubmitData() {
                   className="w-full bg-transparent border-b border-outline/30 py-3 font-mono text-xl focus:outline-none focus:border-primary-fixed transition-all placeholder:text-surface-container-highest"
                   placeholder="50,000"
                   type="number"
-                  value={form.volume}
+                  value={volume}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, volume: +e.target.value }))
+                    setVolume(e.target.value === "" ? "" : Number(e.target.value))
                   }
                 />
                 <span className="absolute right-0 bottom-3 font-mono text-[10px] text-on-surface-variant">
@@ -146,9 +135,11 @@ export default function SubmitData() {
                   className="w-full bg-transparent border-b border-outline/30 py-3 font-mono text-xl focus:outline-none focus:border-primary-fixed transition-all placeholder:text-surface-container-highest"
                   placeholder="12"
                   type="number"
-                  value={form.repayments}
+                  value={repayments}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, repayments: +e.target.value }))
+                    setRepayments(
+                      e.target.value === "" ? "" : Number(e.target.value),
+                    )
                   }
                 />
                 <span className="absolute right-0 bottom-3 font-mono text-[10px] text-on-surface-variant">
@@ -158,6 +149,7 @@ export default function SubmitData() {
             </div>
           </div>
         </div>
+
         <div className="pt-6 flex items-center justify-between gap-8 border-t border-[#353436]/30">
           <div className="flex items-center gap-3">
             <span
@@ -168,33 +160,35 @@ export default function SubmitData() {
             </span>
             <p className="text-[10px] text-on-surface-variant max-w-xs leading-relaxed">
               Your data is processed locally using{" "}
-              <span className="text-secondary font-mono">cofhejs</span> and
-              never leaves your browser in raw form.
+              <span className="text-secondary font-mono">cofhejs</span> and never
+              leaves your browser in raw form.
             </p>
           </div>
           <button
-            className="px-8 py-4 bg-primary-fixed text-on-primary-fixed font-headline font-extrabold text-sm uppercase tracking-[0.2em] rounded-sm hover:shadow-[0_0_20px_rgba(204,255,0,0.3)] transition-all flex items-center gap-3 disabled:opacity-50"
             type="button"
             onClick={handleSubmit}
             disabled={loading}
+            className="px-8 py-4 bg-primary-fixed text-on-primary-fixed font-headline font-extrabold text-sm uppercase tracking-[0.2em] rounded-sm hover:shadow-[0_0_20px_rgba(204,255,0,0.3)] transition-all flex items-center gap-3 disabled:opacity-50"
           >
             <span className="material-symbols-outlined text-base">lock</span>
-            {loading ? "Processing..." : "Encrypt & Submit"}
+            {loading ? "Working\u2026" : "Encrypt & Submit"}
           </button>
         </div>
+
         {status && (
-          <p className="text-xs font-mono text-on-surface-variant mt-2">
+          <p className="font-mono text-[11px] text-on-surface-variant pt-2">
             {status}
           </p>
         )}
-        {score !== null && step === "done" && (
-          <div className="mt-4 p-4 bg-surface-container-highest rounded-sm border-l-2 border-primary-fixed">
+
+        {score !== null && (
+          <div className="pt-2 flex items-baseline justify-between border-t border-[#353436]/30">
             <span className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">
-              Decrypted Credit Score
+              Decrypted Score
             </span>
-            <p className="font-mono text-3xl text-primary-fixed mt-1">
+            <span className="font-mono text-3xl text-primary-fixed">
               {score.toString()}
-            </p>
+            </span>
           </div>
         )}
       </form>

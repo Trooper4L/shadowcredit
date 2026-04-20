@@ -2,37 +2,42 @@
 
 import { useState, useCallback } from "react";
 import { useWalletClient, usePublicClient, useAccount } from "wagmi";
+import { Encryptable, FheTypes } from "@cofhe/sdk";
 import { CONTRACTS, ShadowScorerABI } from "@/lib/contracts";
+import { useCofheClient } from "@/components/CofheProvider";
 
 export function useShadowScorer() {
   const { address } = useAccount();
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
+  const { client: cofhe, ready, ensurePermit } = useCofheClient();
   const [loading, setLoading] = useState(false);
-  const [score, setScore] = useState<bigint | null>(null);
 
   const submitProfile = useCallback(async (
     paymentHistory: number,
     utilization: number,
     volume: number,
-    repayments: number
+    repayments: number,
   ) => {
     if (!walletClient || !address) throw new Error("Wallet not connected");
+    if (!ready) throw new Error("CoFHE client is not ready");
     setLoading(true);
 
     try {
-      // In production: encrypt with cofhejs then submit
-      // const [payEnc, utilEnc, volEnc, repayEnc] = (await cofhejs.encrypt(...)).data!;
+      const [payEnc, utilEnc, volEnc, repayEnc] = await cofhe
+        .encryptInputs([
+          Encryptable.uint32(BigInt(paymentHistory)),
+          Encryptable.uint32(BigInt(utilization)),
+          Encryptable.uint64(BigInt(volume)),
+          Encryptable.uint32(BigInt(repayments)),
+        ])
+        .execute();
+
       const hash = await walletClient.writeContract({
         address: CONTRACTS.ShadowScorer,
         abi: ShadowScorerABI,
         functionName: "submitProfile",
-        args: [
-          { data: "0x" as `0x${string}`, securityZone: 0 },
-          { data: "0x" as `0x${string}`, securityZone: 0 },
-          { data: "0x" as `0x${string}`, securityZone: 0 },
-          { data: "0x" as `0x${string}`, securityZone: 0 },
-        ],
+        args: [payEnc, utilEnc, volEnc, repayEnc],
       });
 
       await publicClient!.waitForTransactionReceipt({ hash });
@@ -40,12 +45,11 @@ export function useShadowScorer() {
     } finally {
       setLoading(false);
     }
-  }, [walletClient, address, publicClient]);
+  }, [walletClient, address, publicClient, cofhe, ready]);
 
   const computeScore = useCallback(async () => {
     if (!walletClient || !address) throw new Error("Wallet not connected");
     setLoading(true);
-
     try {
       const hash = await walletClient.writeContract({
         address: CONTRACTS.ShadowScorer,
@@ -60,41 +64,91 @@ export function useShadowScorer() {
     }
   }, [walletClient, address, publicClient]);
 
-  const requestDecrypt = useCallback(async () => {
-    if (!walletClient || !address) throw new Error("Wallet not connected");
-    setLoading(true);
+  return { submitProfile, computeScore, loading };
+}
 
+/**
+ * Off-chain reveal: decryptForView. No gas, no tx. Permit-gated.
+ * Used in the UI to show the caller their own plaintext score.
+ */
+export function useDecryptScoreForDisplay() {
+  const { address } = useAccount();
+  const publicClient = usePublicClient();
+  const { client: cofhe, ready, ensurePermit } = useCofheClient();
+  const [loading, setLoading] = useState(false);
+  const [score, setScore] = useState<bigint | null>(null);
+
+  const reveal = useCallback(async () => {
+    if (!address) throw new Error("Wallet not connected");
+    if (!ready) throw new Error("CoFHE client is not ready");
+    setLoading(true);
     try {
-      const hash = await walletClient.writeContract({
+      await ensurePermit();
+
+      const ctHash = (await publicClient!.readContract({
         address: CONTRACTS.ShadowScorer,
         abi: ShadowScorerABI,
-        functionName: "requestDecryptScore",
-        args: [],
-      });
-      await publicClient!.waitForTransactionReceipt({ hash });
+        functionName: "getScoreHandle",
+        account: address,
+      })) as bigint;
 
-      // Poll for decryption result
-      let attempts = 0;
-      while (attempts < 15) {
-        const [decryptedScore, isReady] = await publicClient!.readContract({
-          address: CONTRACTS.ShadowScorer,
-          abi: ShadowScorerABI,
-          functionName: "getDecryptedScore",
-          account: address,
-        }) as [bigint, boolean];
+      const plain = await cofhe
+        .decryptForView(ctHash, FheTypes.Uint64)
+        .withPermit()
+        .execute();
 
-        if (isReady) {
-          setScore(decryptedScore);
-          return decryptedScore;
-        }
-        attempts++;
-        await new Promise(r => setTimeout(r, 2000));
-      }
-      throw new Error("Decryption timed out");
+      setScore(plain as bigint);
+      return plain as bigint;
     } finally {
       setLoading(false);
     }
-  }, [walletClient, address, publicClient]);
+  }, [address, publicClient, cofhe, ready, ensurePermit]);
 
-  return { submitProfile, computeScore, requestDecrypt, score, loading };
+  return { reveal, score, loading };
+}
+
+/**
+ * On-chain reveal: decryptForTx + publishScore. Costs gas.
+ * Used when the plaintext must be visible on-chain (analytics, integrations).
+ */
+export function useDecryptScoreForChain() {
+  const { address } = useAccount();
+  const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient();
+  const { client: cofhe, ready, ensurePermit } = useCofheClient();
+  const [loading, setLoading] = useState(false);
+
+  const publish = useCallback(async () => {
+    if (!walletClient || !address) throw new Error("Wallet not connected");
+    if (!ready) throw new Error("CoFHE client is not ready");
+    setLoading(true);
+    try {
+      await ensurePermit();
+
+      const ctHash = (await publicClient!.readContract({
+        address: CONTRACTS.ShadowScorer,
+        abi: ShadowScorerABI,
+        functionName: "getScoreHandle",
+        account: address,
+      })) as bigint;
+
+      const { decryptedValue, signature } = await cofhe
+        .decryptForTx(ctHash)
+        .withPermit()
+        .execute();
+
+      const hash = await walletClient.writeContract({
+        address: CONTRACTS.ShadowScorer,
+        abi: ShadowScorerABI,
+        functionName: "publishScore",
+        args: [decryptedValue, signature],
+      });
+      await publicClient!.waitForTransactionReceipt({ hash });
+      return { txHash: hash, score: decryptedValue };
+    } finally {
+      setLoading(false);
+    }
+  }, [walletClient, address, publicClient, cofhe, ready, ensurePermit]);
+
+  return { publish, loading };
 }

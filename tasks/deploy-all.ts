@@ -37,17 +37,29 @@ task("deploy-shadowcredit", "Deploy all ShadowCredit contracts to the network")
     console.log(`   ShadowLender: ${lenderAddress}`);
 
     // 4. Deploy ScoreProver
-    console.log("4/4 Deploying ScoreProver...");
+    console.log("4/5 Deploying ScoreProver...");
     const ScoreProver = await ethers.getContractFactory("ScoreProver");
     const scoreProver = await ScoreProver.deploy(scorerAddress);
     await scoreProver.waitForDeployment();
     const proverAddress = await scoreProver.getAddress();
     console.log(`   ScoreProver: ${proverAddress}`);
 
-    // Authorize ShadowLender to update scores in ShadowScorer
+    // 5. Deploy CreditPassport (the Vidix identity primitive)
+    console.log("5/5 Deploying CreditPassport...");
+    const CreditPassport = await ethers.getContractFactory("CreditPassport");
+    const creditPassport = await CreditPassport.deploy(scorerAddress);
+    await creditPassport.waitForDeployment();
+    const passportAddress = await creditPassport.getAddress();
+    console.log(`   CreditPassport: ${passportAddress}`);
+
+    // Authorize ShadowLender + CreditPassport to read score handles in ShadowScorer
     console.log("\nSetting up permissions...");
     await shadowScorer.setAuthorizedSubmitter(lenderAddress, true);
     console.log(`   ShadowLender authorized in ShadowScorer`);
+    await shadowScorer.setAuthorizedSubmitter(passportAddress, true);
+    console.log(`   CreditPassport authorized in ShadowScorer`);
+    await shadowLender.setPassport(passportAddress);
+    console.log(`   CreditPassport registered on ShadowLender`);
 
     // Seed the lending pool with USDC
     console.log("Seeding lending pool...");
@@ -64,11 +76,12 @@ task("deploy-shadowcredit", "Deploy all ShadowCredit contracts to the network")
       ShadowScorer: scorerAddress,
       ShadowLender: lenderAddress,
       ScoreProver: proverAddress,
+      CreditPassport: passportAddress,
       deployedAt: new Date().toISOString()
     };
 
     fs.writeFileSync("./deployments.json", JSON.stringify(addresses, null, 2));
     console.log("\nAddresses saved to deployments.json");
-    console.log("\nShadowCredit deployed successfully!\n");
+    console.log("\nVidix deployed successfully!\n");
     console.log(JSON.stringify(addresses, null, 2));
   });

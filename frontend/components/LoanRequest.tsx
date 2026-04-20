@@ -2,26 +2,39 @@
 
 import { useState } from "react";
 import { useAccount } from "wagmi";
-import { useShadowLender } from "@/hooks/useShadowLender";
 import { parseEther } from "viem";
+import { useShadowLender } from "@/hooks/useShadowLender";
+import { usePassport } from "@/hooks/usePassport";
 
 export default function LoanRequest() {
   const { isConnected } = useAccount();
-  const { requestLoan, loading } = useShadowLender();
-  const [loanAmount, setLoanAmount] = useState("25000");
-  const [collateral, setCollateral] = useState("0.01");
-  const [status, setStatus] = useState("");
+  const { requestLoan, requestLoanViaPassport, loading } = useShadowLender();
+  const { tokenId, exists: hasPassport } = usePassport();
 
-  const handleRequest = async () => {
+  const [loanAmount, setLoanAmount] = useState("25,000.00");
+  const [collateral, setCollateral] = useState("12.50");
+  const [threshold, setThreshold] = useState("500");
+  const [viaPassport, setViaPassport] = useState(false);
+  const [status, setStatus] = useState<string>("");
+
+  const submit = async () => {
     if (!isConnected) {
       setStatus("Please connect your wallet first.");
       return;
     }
     try {
-      setStatus("Encrypting threshold and submitting loan request...");
-      const collateralWei = parseEther(collateral);
-      await requestLoan(loanAmount, collateralWei);
-      setStatus("Loan request submitted. Awaiting CoFHE qualification check...");
+      setStatus("Encrypting threshold and submitting loan request\u2026");
+      const cleanLoan = loanAmount.replace(/[, ]/g, "");
+      const cleanCollateral = collateral.replace(/[, ]/g, "");
+      const collateralWei = parseEther(cleanCollateral);
+      const thresholdNum = Number(threshold);
+      if (viaPassport && hasPassport && tokenId) {
+        await requestLoanViaPassport(tokenId, cleanLoan, collateralWei, thresholdNum);
+        setStatus("Loan requested via passport. Cross-protocol handle consumed in-tx.");
+      } else {
+        await requestLoan(cleanLoan, collateralWei, thresholdNum);
+        setStatus("Loan requested. Awaiting CoFHE qualification check.");
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";
       setStatus(`Error: ${msg}`);
@@ -40,6 +53,7 @@ export default function LoanRequest() {
           Loan Request
         </h3>
       </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
         <div className="space-y-4">
           <label className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">
@@ -62,6 +76,7 @@ export default function LoanRequest() {
             </p>
           </div>
         </div>
+
         <div className="space-y-4">
           <label className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">
             Collateral (ETH)
@@ -83,18 +98,49 @@ export default function LoanRequest() {
             </p>
           </div>
         </div>
+
+        <div className="space-y-2 md:col-span-2">
+          <label className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">
+            Min Score Threshold (encrypted at submit)
+          </label>
+          <input
+            className="w-full bg-transparent border-b border-outline/30 py-3 font-mono text-xl focus:outline-none focus:border-primary-fixed transition-all"
+            type="number"
+            value={threshold}
+            onChange={(e) => setThreshold(e.target.value)}
+          />
+        </div>
       </div>
+
+      {hasPassport && (
+        <label className="mt-6 flex items-center gap-3 text-[11px] text-on-surface-variant">
+          <input
+            type="checkbox"
+            checked={viaPassport}
+            onChange={(e) => setViaPassport(e.target.checked)}
+            className="accent-primary-fixed"
+          />
+          Use my Credit Passport (tokenId {tokenId?.toString()}) — consumes the
+          encrypted score handle via transient permission.
+        </label>
+      )}
+
       <div className="mt-10">
         <button
-          onClick={handleRequest}
+          onClick={submit}
           disabled={loading}
           className="w-full py-5 bg-transparent border-2 border-primary-fixed text-primary-fixed font-headline font-extrabold text-sm uppercase tracking-[0.3em] rounded-sm hover:bg-primary-fixed hover:text-on-primary-fixed transition-all disabled:opacity-50"
         >
-          {loading ? "Processing..." : "Request Loan"}
+          {loading
+            ? "Processing\u2026"
+            : viaPassport
+              ? "Request via Passport"
+              : "Request Loan"}
         </button>
       </div>
+
       {status && (
-        <p className="text-xs font-mono text-on-surface-variant mt-4">
+        <p className="mt-4 font-mono text-[11px] text-on-surface-variant">
           {status}
         </p>
       )}
