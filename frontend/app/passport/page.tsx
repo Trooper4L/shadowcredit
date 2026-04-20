@@ -127,7 +127,8 @@ const COMPOSITION = [
 
 export default function PassportPage() {
   const { address, isConnected } = useAccount();
-  const { state: passport, mint, loading: mintLoading } = usePassport();
+  const { tokenId, issuedAt, exists, mint, loading: mintLoading } = usePassport();
+  const passport = { tokenId, issuedAt, exists };
   const { score, reveal, loading: revealLoading } = useDecryptScoreForDisplay();
   const [sealStatus, setSealStatus] = useState<string | null>(null);
 

@@ -64,7 +64,7 @@ export function useShadowLender() {
         address: CONTRACTS.ShadowLender,
         abi: ShadowLenderABI,
         functionName: "requestLoan",
-        args: [amountWei, thresholdEnc],
+        args: [amountWei, thresholdEnc as any],
         value: collateralEth,
       });
       await publicClient!.waitForTransactionReceipt({ hash });
@@ -90,7 +90,7 @@ export function useShadowLender() {
         address: CONTRACTS.ShadowLender,
         abi: ShadowLenderABI,
         functionName: "requestLoanViaPassport",
-        args: [tokenId, amountWei, thresholdEnc],
+        args: [tokenId, amountWei, thresholdEnc as any],
         value: collateralEth,
       });
       await publicClient!.waitForTransactionReceipt({ hash });

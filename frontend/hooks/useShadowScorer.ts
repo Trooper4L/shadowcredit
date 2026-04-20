@@ -37,7 +37,7 @@ export function useShadowScorer() {
         address: CONTRACTS.ShadowScorer,
         abi: ShadowScorerABI,
         functionName: "submitProfile",
-        args: [payEnc, utilEnc, volEnc, repayEnc],
+        args: [payEnc as any, utilEnc as any, volEnc as any, repayEnc as any],
       });
 
       await publicClient!.waitForTransactionReceipt({ hash });

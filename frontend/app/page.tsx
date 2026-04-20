@@ -312,7 +312,7 @@ export default function HomePage() {
                 transform: "rotate(-1deg)",
               }}
             >
-              — from the morning's tally
+              — from the morning&apos;s tally
             </div>
           </div>
 
@@ -436,7 +436,7 @@ export default function HomePage() {
                 A scholarly note. This is not zero-knowledge in the classical
                 sense. It is{" "}
                 <em>computation behind a veil neither party can lift</em> —
-                only the coprocessor's threshold signatures can bless a result
+                only the coprocessor&apos;s threshold signatures can bless a result
                 into plaintext, and only upon your consent.
               </p>
               <div
@@ -475,7 +475,7 @@ export default function HomePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <Postcard
-              quote="Applied for a short-term line against my freelance income. Helix approved me at 8% — my bank wouldn't touch the application without a pay-stub. The Bureau knew better."
+              quote="Applied for a short-term line against my freelance income. Helix approved me at 8% — my bank wouldn&apos;t touch the application without a pay-stub. The Bureau knew better."
               who="0x7a...9e1b"
               role="BEARER · NO. 00421"
               stampLabel="Approved"
@@ -484,7 +484,7 @@ export default function HomePage() {
               tapeLeft
             />
             <Postcard
-              quote="I underwrite for a pool that could never publish borrower histories on-chain. Vidix lets us price risk without violating anyone's privacy. Frankly, it feels like cheating."
+              quote="I underwrite for a pool that could never publish borrower histories on-chain. Vidix lets us price risk without violating anyone&apos;s privacy. Frankly, it feels like cheating."
               who="Helix Pool"
               role="COUNTING-HOUSE · 0xA71c"
               stampLabel="Consumer"
@@ -522,7 +522,7 @@ export default function HomePage() {
               className="serif text-lg italic"
               style={{ color: "var(--ink-soft)" }}
             >
-              The Bureau replies to the honest ones. Here are the replies we've
+              The Bureau replies to the honest ones. Here are the replies we&apos;ve
               filed for publication.
             </p>
           </div>
@@ -547,7 +547,7 @@ export default function HomePage() {
               />
               <Faq
                 q="Q. Is the plaintext ever stored anywhere?"
-                a="Only transiently, in your own browser, after you have issued yourself a permit. Never on-chain. Never in our servers. Never in a lender's contract. The coprocessor sees only cipher-handles and threshold-signs results into being. The plaintext lives exactly where you let it, and nowhere else."
+                a="Only transiently, in your own browser, after you have issued yourself a permit. Never on-chain. Never in our servers. Never in a lender&apos;s contract. The coprocessor sees only cipher-handles and threshold-signs results into being. The plaintext lives exactly where you let it, and nowhere else."
                 rotate="0.2deg"
               />
             </div>
@@ -835,7 +835,7 @@ function Postcard({
         className="fell italic text-[15px] leading-relaxed mb-4"
         style={{ color: "var(--ink)" }}
       >
-        "{quote}"
+        &quot;{quote}&quot;
       </div>
 
       <div className="flex justify-between items-end mt-6">
