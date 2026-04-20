@@ -351,7 +351,7 @@ function Application({ app }: { app: (typeof APPLICATIONS)[number] }) {
             top: 8,
             right: 8,
             fontSize: 9,
-            transform: `rotate(${(app as any).stampRotate ?? "-3deg"})`,
+            transform: `rotate(${app.stampRotate ?? "-3deg"})`,
           }}
         >
           {stampLabel}

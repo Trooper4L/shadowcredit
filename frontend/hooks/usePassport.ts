@@ -40,7 +40,7 @@ export function usePassport() {
 
         if (cancelled) return;
 
-        if (tokenId === 0n) {
+        if (tokenId === BigInt(0)) {
           setState({ tokenId: null, issuedAt: null, exists: false });
           return;
         }

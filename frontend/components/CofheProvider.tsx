@@ -33,6 +33,7 @@ export default function CofheProvider({ children }: { children: React.ReactNode 
       setConnecting(true);
       setError(null);
       try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await cofheClient.connect(publicClient as any, walletClient as any);
         if (!cancelled) setReady(true);
       } catch (err) {

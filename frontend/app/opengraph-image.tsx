@@ -7,8 +7,6 @@ export const contentType = "image/png";
 
 export default function OpengraphImage() {
   const paper = "#0E2A2E";
-  const paperDark = "#0A1F22";
-  const paper3 = "#1C4044";
   const ink = "#F4C9A0";
   const inkSoft = "#E6AE82";
   const oxblood = "#FF8A5B";
