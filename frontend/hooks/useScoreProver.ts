@@ -67,7 +67,7 @@ export function useScoreProver() {
         address: CONTRACTS.ScoreProver,
         abi: ScoreProverABI,
         functionName: "requestRangeProof",
-        args: [userAddress, lowEnc, highEnc],
+        args: [userAddress, lowEnc as any, highEnc as any],
       });
       await publicClient!.waitForTransactionReceipt({ hash });
       return hash;

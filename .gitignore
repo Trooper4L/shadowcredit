@@ -1,5 +1,4 @@
 node_modules
-.env
 
 # Hardhat files
 /cache
@@ -22,3 +21,4 @@ deployments.json
 # Frontend
 frontend/.next
 frontend/node_modules
+config.bat
